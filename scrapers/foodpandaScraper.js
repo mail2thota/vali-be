@@ -60,6 +60,42 @@ class FoodpandaScraper extends BaseScraper {
     await saveCookies('foodpanda', userId, cookies);
   }
 
+  async checkIfLoggedIn() {
+    // Try multiple selectors to detect if user is logged in
+    const loginSelectors = [
+      'img[alt*="avatar"]',
+      '.user-avatar',
+      '.profile-menu',
+      '[data-testid*="user"]',
+      '[data-testid*="profile"]',
+      '.user-profile',
+      '.account-menu',
+      'button:has-text("Account")',
+      'a[href*="account"]',
+      'a[href*="profile"]'
+    ];
+
+    for (const selector of loginSelectors) {
+      try {
+        await this.page.waitForSelector(selector, { timeout: 3000 });
+        console.log(`✅ Found login indicator: ${selector}`);
+        return true;
+      } catch (e) {
+        // Try next selector
+      }
+    }
+
+    // Also check if we're redirected to a logged-in page (no login button)
+    try {
+      await this.page.waitForSelector('a[href*="login"], button:has-text("Log in")', { timeout: 3000 });
+      console.log('❌ Login button still visible - not logged in');
+      return false;
+    } catch (e) {
+      console.log('✅ Login button not found - likely logged in');
+      return true;
+    }
+  }
+
   async scrape(searchQuery, location, userId, email, password) {
     await this.initSession();
     try {
@@ -92,13 +128,12 @@ class FoodpandaScraper extends BaseScraper {
         await this.page.goto('https://www.foodpanda.my/', { waitUntil: 'domcontentloaded' });
         await this.randomDelay(2000, 4000);
         
-        // Check if logged in (e.g., look for user avatar or dashboard)
-        try {
-          await this.page.waitForSelector('img[alt*="avatar"], .user-avatar, .profile-menu', { timeout: 15000 });
-          loggedIn = true;
+        // Check if logged in using improved detection
+        loggedIn = await this.checkIfLoggedIn();
+        
+        if (loggedIn) {
           console.log('✅ Successfully logged in using cookies');
-        } catch (e) {
-          loggedIn = false;
+        } else {
           console.log('❌ Cookie login failed, will try manual login');
           console.log('💡 This might mean:');
           console.log('   - Cookies are expired');

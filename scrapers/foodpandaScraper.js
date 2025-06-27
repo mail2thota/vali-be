@@ -96,6 +96,98 @@ class FoodpandaScraper extends BaseScraper {
     }
   }
 
+  async setDeliveryLocation(location) {
+    console.log('📍 Setting delivery location...');
+    
+    // Try multiple selectors for address input
+    const addressSelectors = [
+      'input[placeholder="Enter your full address"]',
+      'input[placeholder*="address"]',
+      'input[placeholder*="delivery"]',
+      'input[placeholder*="location"]',
+      'input[type="text"]',
+      '[data-testid*="address"]',
+      '[data-testid*="location"]'
+    ];
+    
+    let addressInputFound = false;
+    let addressInput = null;
+    
+    for (const selector of addressSelectors) {
+      try {
+        console.log(`🔍 Trying address selector: ${selector}`);
+        addressInput = await this.page.waitForSelector(selector, { timeout: 5000 });
+        console.log(`✅ Found address input: ${selector}`);
+        addressInputFound = true;
+        break;
+      } catch (e) {
+        console.log(`❌ Address selector failed: ${selector}`);
+      }
+    }
+    
+    if (!addressInputFound) {
+      console.log('❌ No address input found. Available inputs:');
+      const inputs = await this.page.$$eval('input', inputs => 
+        inputs.map(input => ({
+          placeholder: input.placeholder,
+          type: input.type,
+          id: input.id,
+          name: input.name
+        }))
+      );
+      console.log(inputs);
+      throw new Error('Address input not found');
+    }
+    
+    // Clear and fill the address input
+    await this.randomDelay(500, 1000);
+    await addressInput.click();
+    await addressInput.fill('');
+    await this.randomDelay(300, 800);
+    await addressInput.fill(location);
+    await this.randomDelay(500, 1000);
+    await this.page.keyboard.press('Enter');
+    
+    // Wait for address suggestions and select the first one
+    console.log('🔍 Waiting for address suggestions...');
+    const suggestionSelectors = [
+      '.address-autocomplete__item',
+      '.autocomplete-item',
+      '.suggestion-item',
+      '[data-testid*="suggestion"]',
+      '.address-suggestion',
+      'li[role="option"]',
+      '.dropdown-item'
+    ];
+    
+    let suggestionFound = false;
+    for (const selector of suggestionSelectors) {
+      try {
+        console.log(`🔍 Trying suggestion selector: ${selector}`);
+        await this.page.waitForSelector(selector, { timeout: 8000 });
+        console.log(`✅ Found suggestion: ${selector}`);
+        await this.randomDelay(500, 1000);
+        await this.page.click(selector);
+        suggestionFound = true;
+        console.log('✅ Address selected successfully');
+        break;
+      } catch (e) {
+        console.log(`❌ Suggestion selector failed: ${selector}`);
+      }
+    }
+    
+    if (!suggestionFound) {
+      console.log('⚠️ No address suggestions found, trying to continue anyway...');
+      // Try to press Enter again or just continue
+      await this.page.keyboard.press('Enter');
+      await this.randomDelay(2000, 4000);
+    }
+    
+    // Wait for the page to load restaurants for the location
+    console.log('⏳ Waiting for restaurants to load...');
+    await this.page.waitForTimeout(5000);
+  }
+
   async scrape(searchQuery, location, userId, email, password) {
     await this.initSession();
     try {
@@ -157,37 +249,11 @@ class FoodpandaScraper extends BaseScraper {
         // No cookie popup, continue
       }
       
-      // Try multiple selectors for address input
-      let addressInputFound = false;
-      const addressSelectors = [
-        'input[placeholder="Enter your full address"]',
-        'input[placeholder*="address"]',
-        'input[type="text"]',
-      ];
-      for (const selector of addressSelectors) {
-        try {
-          await this.page.waitForSelector(selector, { timeout: 8000 });
-          await this.randomDelay(500, 1000);
-          await this.page.fill(selector, location);
-          await this.randomDelay(300, 800);
-          await this.page.keyboard.press('Enter');
-          addressInputFound = true;
-          break;
-        } catch (e) {
-          // Try next selector
-        }
-      }
-      if (!addressInputFound) throw new Error('Address input not found');
-      
-      // Wait for address suggestions and select the first one
-      await this.page.waitForSelector('.address-autocomplete__item', { timeout: 15000 });
-      await this.randomDelay(500, 1000);
-      await this.page.click('.address-autocomplete__item');
-      
-      // Wait for the page to load restaurants for the location
-      await this.page.waitForTimeout(5000);
+      // Set delivery location
+      await this.setDeliveryLocation(location);
       
       // Search for the query
+      console.log('🔍 Searching for restaurants...');
       await this.page.waitForSelector('input[placeholder="Search for restaurant or cuisine"]', { timeout: 15000 });
       await this.randomDelay(500, 1000);
       await this.page.fill('input[placeholder="Search for restaurant or cuisine"]', searchQuery);

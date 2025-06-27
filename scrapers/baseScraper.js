@@ -1,5 +1,7 @@
 const { chromium } = require('playwright');
 const readline = require('readline');
+const os = require('os');
+const path = require('path');
 
 class BaseScraper {
   constructor(options = {}) {
@@ -10,7 +12,20 @@ class BaseScraper {
   }
 
   async initSession() {
-    this.browser = await chromium.launch({ headless: this.options.headless !== false });
+    // Use real Chrome user profile for more human-like browsing
+    const userDataDir = this.getChromeUserDataDir();
+    
+    this.browser = await chromium.launch({ 
+      headless: this.options.headless !== false,
+      args: [
+        '--no-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-dev-shm-usage',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor'
+      ]
+    });
+    
     this.context = await this.browser.newContext({
       userAgent: this.getRandomUserAgent(),
       viewport: { width: 1280, height: 800 },
@@ -18,14 +33,48 @@ class BaseScraper {
       extraHTTPHeaders: {
         'accept-language': 'en-US,en;q=0.9',
       },
+      // Use real Chrome profile if available
+      ...(userDataDir && { userDataDir })
     });
+    
     this.page = await this.context.newPage();
+    
     // Set navigator properties to look more human
     await this.page.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => false });
       Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
       Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
+      // Remove automation indicators
+      delete window.navigator.__proto__.webdriver;
     });
+  }
+
+  getChromeUserDataDir() {
+    const platform = os.platform();
+    let chromePath;
+    
+    if (platform === 'darwin') {
+      // macOS
+      chromePath = path.join(os.homedir(), 'Library', 'Application Support', 'Google', 'Chrome');
+    } else if (platform === 'win32') {
+      // Windows
+      chromePath = path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'User Data');
+    } else {
+      // Linux
+      chromePath = path.join(os.homedir(), '.config', 'google-chrome');
+    }
+    
+    // Check if the directory exists
+    try {
+      const fs = require('fs');
+      if (fs.existsSync(chromePath)) {
+        return chromePath;
+      }
+    } catch (e) {
+      // Directory doesn't exist or not accessible
+    }
+    
+    return null; // Fall back to default behavior
   }
 
   async closeSession() {

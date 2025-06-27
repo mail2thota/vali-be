@@ -1,4 +1,4 @@
-# VaLi Food Delivery General Scraper
+# VaLi AI Delivery
 
 A Node.js-based general scraper framework for integrating with food delivery platforms in Malaysia, starting with Foodpanda.
 
